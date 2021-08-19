@@ -10,10 +10,16 @@ using FluentEmail.Smtp;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 
-namespace ClarityEmailerLibrary
+namespace ClarityMailLibrary
 {
+    /// <summary>
+    /// Basic email sender with retries functionality. Sends emails both sync and async.
+    /// Writes to logs at C:\Logs\ClarityMail using Serilog pertaining to success/failure of emails sent.
+    /// Gets config info from appsettings.json, under the heading "ClarityMail" with Host and Port options.
+    /// </summary>
     public class ClarityMail : IClarityMail
     {
+        
         #region Private
         private int _id;
         private string _mailFrom;
@@ -23,7 +29,6 @@ namespace ClarityEmailerLibrary
         private string _SMTPServer;
         private int _SMTPPort;
     #endregion
-        // Public properties
         #region Public
 
         public int Id
@@ -82,6 +87,83 @@ namespace ClarityEmailerLibrary
 
         #endregion
 
+        /// <summary>
+        /// Sends a single email synchronously, attempting to retry {retries} number of times on failure.
+        /// </summary>
+        /// <param name="recipientName">The name of the recipient, to insert into the "Hello {recipient}," field.</param>
+        /// <param name="recipientEmailAddress">The email address of the person to receive the email.</param>
+        /// <param name="senderMailbox">The email address of the sender.</param>
+        /// <param name="subject">The data to insert into the subject of the email.</param>
+        /// <param name="body">The body of the email, inserted using Razor Template.</param>
+        /// <param name="retries">The number of times to attempt to resend in the event of failure.</param>
+        public void Send(string recipientName, string recipientEmailAddress, string senderMailbox, string subject, string body, int retries)
+        {
+            
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json")
+                .AddEnvironmentVariables()
+                .Build();
+            
+            var claritySettings = configuration.GetSection("ClarityMail");
+
+            var sender = new SmtpSender(() => new SmtpClient( claritySettings["Host"])
+            {
+                Port = int.Parse(claritySettings["Port"]),
+                EnableSsl = false,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+            });
+            
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(configuration)
+                .WriteTo.RollingFile(@"C:\Logs\ClarityMail\ClarityMailLibrary-{Date}.txt", retainedFileCountLimit: 10 ) 
+                .CreateLogger();
+            
+            Email.DefaultSender = sender;
+            Email.DefaultRenderer = new RazorRenderer();
+
+            StringBuilder template = new();
+            template.AppendLine("Dear @Model.FirstName");
+            template.Append(body);
+            template.AppendLine("- The Clarity Ventures Team");
+
+            for (var count = 1; count <= retries; count++)
+            {
+                try
+                {
+                    Email
+                        .From(senderMailbox, senderMailbox)
+                        .To(recipientEmailAddress, recipientName)
+                        .Subject(subject)
+                        .UsingTemplate(template.ToString(), new { FirstName = $"{recipientName}" })
+                        .SendAsync();
+
+                    Log.Information( $"SEND SUCCESS: TO:{recipientEmailAddress} FROM:{senderMailbox} SUBJECT:{subject} BODY:{body}");
+                }
+                catch (Exception ex)
+                {
+                    var exception = ex.Message;
+                    Log.Warning( $"SEND FAIL: TO:{recipientEmailAddress} FROM:{senderMailbox} SUBJECT:{subject} BODY:{body}  : Attempt {count} of {retries}.");
+
+                    if (count >= retries)
+                    {
+                        continue;
+                    }
+
+                    Task.Delay(count * 1000);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Sends an email asynchronously, attempting to retry {retries} number of times upon failure.
+        /// </summary>
+        /// <param name="recipientName">The name of the recipient, to insert into the "Hello {recipient}," field.</param>
+        /// <param name="recipientEmailAddress">The email address of the person to receive the email.</param>
+        /// <param name="senderMailbox">The email address of the sender.</param>
+        /// <param name="subject">The data to insert into the subject of the email.</param>
+        /// <param name="body">The body of the email, inserted using Razor Template.</param>
+        /// <param name="retries">The number of times to attempt to resend in the event of failure.</param>
         public async Task SendAsync(string recipientName, string recipientEmailAddress, string senderMailbox, string subject, string body, int retries)
         {
             var configuration = new ConfigurationBuilder()
@@ -101,7 +183,7 @@ namespace ClarityEmailerLibrary
             
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(configuration)
-                .WriteTo.RollingFile(@"C:\Logs\ClarityMailLibrary-{Date}A.txt", retainedFileCountLimit: 10 ) 
+                .WriteTo.RollingFile(@"C:\Logs\ClarityMail\ClarityMailLibrary-{Date}A.txt", retainedFileCountLimit: 10 ) 
                 .CreateLogger();
             
             Email.DefaultSender = sender;
@@ -110,7 +192,7 @@ namespace ClarityEmailerLibrary
             StringBuilder template = new();
             template.AppendLine("Dear @Model.FirstName");
             template.Append(body);
-            template.Append("- The Clarity Ventures Team");
+            template.AppendLine("- The Clarity Ventures Team");
 
             for (var count = 1; count <= retries; count++)
             {
@@ -120,7 +202,7 @@ namespace ClarityEmailerLibrary
                         .From(senderMailbox, senderMailbox)
                         .To(recipientEmailAddress, recipientName)
                         .Subject(subject)
-                        .UsingTemplate(template.ToString(), new { FirstName = "Jeremy" })
+                        .UsingTemplate(template.ToString(), new { FirstName = $"{recipientName}" })
                         .SendAsync();
 
                     Log.Information( $"SENDASYNC SUCCESS: TO:{recipientEmailAddress} FROM:{senderMailbox} SUBJECT:{subject} BODY:{body}");

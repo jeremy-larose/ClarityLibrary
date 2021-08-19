@@ -1,9 +1,10 @@
 ﻿using System.Threading.Tasks;
 
-namespace ClarityEmailerLibrary
+namespace ClarityMailLibrary
 {
     public interface IClarityMail
     {
         public Task SendAsync( string recipientName, string recipientMailbox, string senderMailbox, string body, string subject, int retries);
+        public void Send(string recipientName, string RecipientMailbox, string senderMailbox, string body, string subject, int retries);
     }
 }
