@@ -13,7 +13,7 @@ Serilog.Sinks.RollingFile
 Serilog.Settings.Config
 
 For appsettings.json, include the following: 
-```
+```json
   "ClarityMail" : {
     "Host": "localhost",
     "Port": 35,
