@@ -17,6 +17,11 @@ Includes 3 functions through IClarityMail:
 
 
 SendAsync( string recipientName, string recipientMailbox, string senderMailbox, string body, string subject, int retries )
+
 Sends an email synchronously, attempting to resend {retries} number of times.
+
+[Used for testing purposes for Papercut, doesn't send actual email]
 SendTestAsync( string recipientName, string recipientMailbox, string senderMailbox, string body, string subject, int retries )
+
 Send( string recipientName, string recipientMailbox, string senderMailbox, string body, string subject, int retries )
+
